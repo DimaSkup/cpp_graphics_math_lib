@@ -92,7 +92,7 @@ void TestMatrixConstructorVec4()
     const Matrix m(v1, v2, v3, v4);
 
     for (int i = 0; i < 16; ++i)
-        assert(FloatEqual(m.mat[i], i+1));
+        assert(FloatEqual(m.mat[i], (float)(i+1)));
 
     LogMsg("%-50s test is passed", "Matrix::Matrix(Vec4&, Vec4&, Vec4&, Vec4&)");
 }
@@ -116,25 +116,27 @@ void TestMatrixPrint()
 
 void TestMatrixEqual()
 {
-    Matrix m1;
-    Matrix m2;
+    float arr[16]{ 0 };
 
     // fill matrices with values
-
     for (int i = 0; i < 16; ++i)
-    {
-        m1.mat[i] = sqrtf(i+1);
-        m2.mat[i] = sqrtf(i+1);
-    }
+        arr[i] = sqrtf((float)(i + 1));
+
+    Matrix m1(arr);
+    Matrix m2(arr);
+
 
     assert(MatrixEqual(m1, m2) == true);
+
+    // manyally check if matrices are equal to each other
+    for (int i = 0; i < 16; ++i)
+        assert(FloatEqual(m1.mat[i], m2.mat[i]));
 
     // test for each element isn't equal
     for (int i = 0; i < 16; ++i)
     {
         Matrix m3(m1);
         m3.mat[i] = 0;
-
         assert(MatrixEqual(m1, m3) == false);
     }
 
@@ -159,14 +161,22 @@ void TestMatrixZero()
 
 void TestMatrixIdentity()
 {
-    Matrix m(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16);
+    Matrix m0(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16);
+    Matrix m1(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16);
 
-    MatrixIdentity(m);
+    // make both matrices to be Identity
+    MatrixIdentity(m0);
+    m1 = MatrixIdentity();
+
+    // check if both matrices are Identity
+    for (int i = 0; i < 16; ++i)
+        assert(FloatEqual(m0.mat[i], IDENTITY_MAT_4X4.mat[i]));
 
     for (int i = 0; i < 16; ++i)
-        assert(m.mat[i] == IDENTITY_MAT_4X4.mat[i]);
+        assert(FloatEqual(m1.mat[i], IDENTITY_MAT_4X4.mat[i]));
 
     LogMsg("%-50s test is passed", "MatrixIdentity(Matrix&)");
+    LogMsg("%-50s test is passed", "MatrixIdentity()");
 }
 
 //---------------------------------------------------------
@@ -293,19 +303,15 @@ void TestMatrixGetInverse()
       
 
     // assert that we receive an identity matrix when multiply matrix by its inverse
-    Matrix I;
+    Matrix I = MatrixIdentity();
     Matrix m0;
     Matrix m1;
 
-    MatrixIdentity(I);
     MatrixMul(matA, invA, m0);
     MatrixMul(matB, invB, m1);
 
-    for (int i = 0; i < 16; ++i)
-        assert(FloatEqual(m0.mat[i], I.mat[i]));
-
-    for (int i = 0; i < 16; ++i)
-        assert(FloatEqual(m1.mat[i], I.mat[i]));
+    assert(MatrixEqual(m0, I) == true);
+    assert(MatrixEqual(m1, I) == true);
 
     LogMsg("%-50s test is passed", "MatrixInverse(const Matrix&, float&, Matrix&)");
 }
@@ -316,16 +322,16 @@ void TestMatrixMultiplyMatrix()
 {
     const Matrix matA(4, 1, 8, 0, 9, 6, 2, 0, 1, 6, 2, 0, 10, 20, 30, 1);
     Matrix invA;
-    Matrix I;
+    Matrix I = MatrixIdentity();
+    Matrix mRes;
     float det = 0;
 
     MatrixInverse(invA, &det, matA);
 
     // multiply a matrix by its inverse so we expect to receive an Identity matrix
-    MatrixMul(matA, invA, I);
+    MatrixMul(matA, invA, mRes);
 
-    for (int i = 0; i < 16; ++i)
-        assert(FloatEqual(I.mat[i], IDENTITY_MAT_4X4.mat[i]));
+    assert(MatrixEqual(I, mRes) == true);
 
     LogMsg("%-50s test is passed", "MatrixMul(const Matrix&, const Matrix&, Matrix&)");
 }
@@ -455,6 +461,20 @@ void TestMatrixRotationZ()
 
 //---------------------------------------------------------
 
+void TestMatrixMulVec3_Helper(const Vec3& v, const Matrix& m, const Vec3& expect)
+{
+    Vec3 res = { 0,0,0 };
+
+    // transform a vector/point
+    MatrixMulVec3(v, m, res);
+
+    assert(FloatEqual(res.x, expect.x));
+    assert(FloatEqual(res.y, expect.y));
+    assert(FloatEqual(res.z, expect.z));
+}
+
+//---------------------------------------------------------
+
 void TestMatrixMulVec4_Helper(const Vec4& v, const Matrix& m, const Vec4& expect)
 {
     Vec4 res = { 0,0,0,0 };
@@ -468,6 +488,39 @@ void TestMatrixMulVec4_Helper(const Vec4& v, const Matrix& m, const Vec4& expect
     assert(FloatEqual(res.w, expect.w));
 }
 
+//---------------------------------------------------------
+
+void TestMatrixMultiplyVec3()
+{
+    // for rotation around Y-axis we have CLOCKWISE order
+    const Matrix mRotY = MatrixRotationY(DEG_TO_RAD(-90));
+
+    // for rotation around X,Z-axis we have COUNTER CLOCKWISE order
+    const Matrix mRotX = MatrixRotationX(DEG_TO_RAD(90));
+    const Matrix mRotZ = MatrixRotationZ(DEG_TO_RAD(90));
+
+
+    // test transformation of a x/y/z unit vector
+    TestMatrixMulVec3_Helper(Vec3{ 1,0,0 }, mRotX, Vec3{ 1,0,0 });
+    TestMatrixMulVec3_Helper(Vec3{ 0,1,0 }, mRotX, Vec3{ 0,0,1 });
+    TestMatrixMulVec3_Helper(Vec3{ 0,0,1 }, mRotX, Vec3{ 0,-1,0 });
+
+    TestMatrixMulVec3_Helper(Vec3{ 1,0,0 }, mRotY, Vec3{  0,0,1  });
+    TestMatrixMulVec3_Helper(Vec3{ 0,1,0 }, mRotY, Vec3{  0,1,0  });
+    TestMatrixMulVec3_Helper(Vec3{ 0,0,1 }, mRotY, Vec3{ -1,0,0  });
+
+    TestMatrixMulVec3_Helper(Vec3{ 1,0,0 }, mRotZ, Vec3{  0,1,0  });
+    TestMatrixMulVec3_Helper(Vec3{ 0,1,0 }, mRotZ, Vec3{ -1,0,0  });
+    TestMatrixMulVec3_Helper(Vec3{ 0,0,1 }, mRotZ, Vec3{  0,0,1  });
+
+    // test transformation of a (1,1,1,0) vector
+    TestMatrixMulVec3_Helper(Vec3{ 1,1,1 }, mRotX, Vec3{  1,-1, 1 });
+    TestMatrixMulVec3_Helper(Vec3{ 1,1,1 }, mRotY, Vec3{ -1, 1, 1 });
+    TestMatrixMulVec3_Helper(Vec3{ 1,1,1 }, mRotZ, Vec3{ -1, 1, 1 });
+
+    LogMsg("%-50s test is passed", "MatrixMulVec3(origVec, matrix, outVec)");
+}
+ 
 //---------------------------------------------------------
 
 void TestMatrixMultiplyVec4()
@@ -514,6 +567,61 @@ void TestMatrixRotationAxis()
     LogMsg("%-50s test is passed", "MatrixRotationAxis(angle, axis)");
 }
 
+
+//==================================================================================
+// test operators
+//==================================================================================
+void TestMatrixOperatorMulAssign()
+{
+    Matrix matA(4, 1, 8, 0, 9, 6, 2, 0, 1, 6, 2, 0, 10, 20, 30, 1);
+    Matrix invA;
+    Matrix I = MatrixIdentity();;
+    float det = 0;
+
+    MatrixInverse(invA, &det, matA);
+
+    // multiply a matrix by its inverse so we expect to receive an Identity matrix
+    matA *= invA;
+
+    assert(MatrixEqual(I, matA) == true);
+
+    LogMsg("%-50s test is passed", "Matrix::operator *= (const Matrix&)");
+}
+
+//---------------------------------------------------------
+
+void TestMatrixOperatorMatMulMat()
+{
+    Matrix I = MatrixIdentity();
+    Matrix matA(4, 1, 8, 0, 9, 6, 2, 0, 1, 6, 2, 0, 10, 20, 30, 1);
+    Matrix invA;
+    float det = 0;
+
+    MatrixInverse(invA, &det, matA);
+
+    // multiply a matrix by its inverse so we expect to receive an Identity matrix
+    Matrix mRes = matA * invA;
+    
+    assert(MatrixEqual(I, mRes) == true);
+
+    LogMsg("%-50s test is passed", "Matrix::operator * (const Matrix&, const Matrix&)");
+}
+
+//---------------------------------------------------------
+
+void TestMatrixOperatorAssign()
+{
+    const Matrix mSrc(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16);
+    Matrix mDst;
+
+    mDst = mSrc;
+
+    assert(MatrixEqual(mSrc, mDst) == true);
+
+    LogMsg("%-50s test is passed", "Matrix::operator = (const Matrix&)");
+}
+
+
 //==================================================================================
 // tests by groups
 //==================================================================================
@@ -549,6 +657,7 @@ void TestMatrixFunctions()
     TestMatrixRotationY();
     TestMatrixRotationZ();
 
+    TestMatrixMultiplyVec3();
     TestMatrixMultiplyVec4();
     TestMatrixRotationAxis();
 }
@@ -558,6 +667,9 @@ void TestMatrixFunctions()
 void TestMatrixOperators()
 {
     printf("\n%s matrix: test operators\n%s", YELLOW, GREEN);
+    TestMatrixOperatorMulAssign();
+    TestMatrixOperatorMatMulMat();
+    TestMatrixOperatorAssign();
 }
 
 //==================================================================================

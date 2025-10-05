@@ -323,21 +323,55 @@ void Test_Plane3d_Set()
 
 void Test_Plane3d_Transform()
 {
-    // setup a plane with 3 points in a clockwise ordering
-    const Vec3 p0(0, 1, 1);
-    const Vec3 p1(1, -1, 1);
-    const Vec3 p2(-1, -1, 1);
+    Plane3d pl(1,2,3,4);
+    Matrix mRotZ        = MatrixRotationZ(DEG_TO_RAD(90));
+    Matrix mTranslate   = MatrixTranslation(1,2,3);
+    Matrix transform    = mRotZ * mTranslate;
 
-    Plane3d pl(p0, p1, p2);
-
-    assert(pl.normal.x < EPSILON_E5);
-    assert(pl.normal.y < EPSILON_E5);
-    assert(pl.normal.z == 1);
-    assert(pl.distance == -1);
+    // compute an inverse transpose matrix of the original transformation
+    Matrix invM0 = MatrixInverse(nullptr, transform);
+    MatrixTranspose(invM0);
 
     // transform using inverse transpose matrix of the original transformation matrix
-    //pl.Transform()
+    pl.Transform(invM0);
 
+    assert(pl.plane == Vec4(-2, 1, 3, -5));
+
+    //=================================
+
+    Plane3d pl1(0,0,1,0);
+    Matrix S1 = MatrixScaling(2, 1, 1);
+    Matrix R1 = MatrixRotationX(DEG_TO_RAD(30));
+    Matrix T1 = MatrixTranslation(0, 1, 2);
+
+    Matrix transform1 = S1 * R1 * T1;
+
+    // compute an inverse transpose matrix of the original transformation
+    Matrix invM1 = MatrixInverse(nullptr, transform1);
+    MatrixTranspose(invM1);
+
+    // transform using inverse transpose matrix of the original transformation matrix
+    pl1.Transform(invM1);
+
+    assert(pl1.plane == Vec4(0, -0.5f, 0.8660254f, -1.23205081f));
+
+    //=================================
+
+    Plane3d pl2(1,2,3,4);
+    Matrix S2 = MatrixScaling(2, 1, 0.5f);
+    Matrix R2 = MatrixRotationZ(DEG_TO_RAD(45));
+    Matrix T2 = MatrixTranslation(1,2,3);
+
+    Matrix transform2 = S2 * R2 * T2;
+
+    // compute an inverse transpose matrix of the original transformation
+    Matrix invM2 = MatrixInverse(nullptr, transform2);
+    MatrixTranspose(invM2);
+
+    // transform using inverse transpose matrix of the original transformation matrix
+    pl2.Transform(invM2);
+
+    assert(pl2.plane == Vec4(-1.06066f, 1.767766f, 6.0f, -16.4748745f));
 
     LogMsg("%-50s test is passed", "Plane3d::Transform(const Matrix& invTranspose)");
 }

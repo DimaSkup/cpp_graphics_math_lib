@@ -14,6 +14,7 @@
     Created:  13.09.2025 by DimaSkup
 \**********************************************************************************/
 #pragma once
+#include <math/math_helpers.h>
 
 
 struct Vec3
@@ -63,7 +64,7 @@ public:
     // comparison
     inline bool operator == (const Vec3& v) const
     {
-        return (x == v.x) && (y == v.y) && (z == v.z);
+        return FloatEqual(x, v.x) && FloatEqual(y, v.y) && FloatEqual(z, v.z);
     }
 
     // negation

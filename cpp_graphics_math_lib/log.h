@@ -3,14 +3,18 @@
 // Description: just logger
 // =================================================================================
 #pragma once
-
-
-
 #pragma warning (disable : 4996)
+
+//---------------------------------------------------------
+// constants
+//---------------------------------------------------------
 #define LOG_BUF_SIZE 512
 #define LOG_STORAGE_SIZE 1024
+#define LOG_MSGS_CHARS_BUF_SIZE 65536
 
-// is necessary to differ logs when we print it in the editor's GUI
+//---------------------------------------------------------
+// it is necessary to differ logs when we print it in the editor's GUI
+//---------------------------------------------------------
 enum eLogType
 {
     LOG_TYPE_MESSAGE,
@@ -19,18 +23,37 @@ enum eLogType
     LOG_TYPE_FORMATTED
 };
 
-struct LogMessage
+//---------------------------------------------------------
+// Desc:   a buffer for all the chars of all the log messages;
+//         content of each msg is pushed into this buffer
+//         (preferably we may use it in the UI log printing)
+//---------------------------------------------------------
+struct LogMsgsCharsBuffer
 {
-    char*   msg = nullptr;
-    eLogType type = LOG_TYPE_MESSAGE;
+    char*     buf      = nullptr;
+    const int maxSize  = LOG_MSGS_CHARS_BUF_SIZE;
+    int       currSize = 0;
 };
 
-// here we store log messages (preferably we may use it in the UI log printing)
+//---------------------------------------------------------
+
+struct LogMessage
+{
+    int startIdx  = 0;   // index of the log message beginning in the msgs chars pool
+    int size      = 0;   // length of the log message + null-terminator
+    
+    eLogType type = LOG_TYPE_MESSAGE;  
+};
+
+//---------------------------------------------------------
+// Desc:   arr of log messages metadata and the current number of logs msgs
+//---------------------------------------------------------
 struct LogStorage
 {
     LogMessage logs[LOG_STORAGE_SIZE];
-    int        numLogs = 0;   // actual number of log messages
+    int        numLogs = 0;
 };
+
 
 // macros to setup console color
 #define RESET       "\033[0m"
@@ -67,7 +90,9 @@ extern int  InitLogger(const char* logFileName);      // call it at the very beg
 extern void CloseLogger();                            // call it at the very end of the application
 extern void SetConsoleColor(const char* keyColor);
 
-const LogStorage* GetLogStorage();
+int         GetNumLogMsgs();
+const char* GetLogTextByIdx(const int idx);
+eLogType    GetLogTypeByIdx(const int idx);
 
 
 void LogMsg(const char* format, ...);

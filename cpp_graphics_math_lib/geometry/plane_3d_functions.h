@@ -54,6 +54,15 @@ inline Plane3d::Plane3d(const Plane3d& pl) :
 }
 
 //---------------------------------------------------------
+// Desc:    input vec <nx, ny, nz, distance>
+//---------------------------------------------------------
+inline Plane3d::Plane3d(const Vec4& v) :
+    normal(v.x, v.y, v.z),
+    distance(v.w)
+{
+}
+
+//---------------------------------------------------------
 // Desc:   init a plane by input 3d points
 //---------------------------------------------------------
 inline Plane3d::Plane3d(const Vec3& p0, const Vec3& p1, const Vec3& p2)
@@ -91,7 +100,7 @@ inline Plane3d::~Plane3d()
 
 inline Plane3d& Plane3d::operator = (const Plane3d& src)
 {
-    normal = src.normal;
+    normal   = src.normal;
     distance = src.distance;
 
     return (*this);
@@ -101,7 +110,7 @@ inline Plane3d& Plane3d::operator = (const Plane3d& src)
 
 inline bool Plane3d::operator == (const Plane3d& plane) const
 {
-    return (normal == plane.normal && distance == plane.distance);
+    return (normal == plane.normal && FloatEqual(distance, plane.distance));
 }
 
 //---------------------------------------------------------
@@ -221,16 +230,17 @@ inline void Plane3d::Set(const Vec3& p, const Vec3& n)
 
 //---------------------------------------------------------
 // Desc:   transform a plane using tranformation 4x4 matrix
+// Args:   - m:   an INVERSE matrix of the original transformation matrix
+//                (1. for computations speed up: in cases when we want to trasform
+//                    multiple plane with the same transformation matrix;
+//                 2. not inverse transpose but only inverse because of row-major order)
 //---------------------------------------------------------
-inline void Plane3d::Transform(const Matrix& invTranspose)
+inline void Plane3d::Transform(const Matrix& inverse)
 {
-    const Matrix& m = invTranspose;
-
-    const Vec3 translation = { m.m30, m.m31, m.m32 };
-
-    MatrixMulVec3(normal, invTranspose, normal);
-
-    distance = distance - Vec3Dot(normal, translation);
+    // D` = D - dot(normal, T*invM)
+    Vec4 tmp;
+    MatrixMulVec4(plane, inverse, tmp);
+    plane = tmp;
 }
 
 //---------------------------------------------------------

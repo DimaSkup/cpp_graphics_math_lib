@@ -3,21 +3,22 @@
 // =================================================================================
 #include "Log.h"
 #include <stdio.h>
-//#include <stdlib.h>
 #include <stdarg.h>
 #include <time.h>
 #include <string.h>
 #include <windows.h>
+#include <assert.h>
 
 #pragma warning (disable : 4996)
 
 
-char g_String    [LOG_BUF_SIZE]{ '\0' };        // global buffer for characters
-char s_StrTmpBuf [LOG_BUF_SIZE]{ '\0' };        // static buffer for internal using
-char s_StrTmpBuf2[LOG_BUF_SIZE]{ '\0' };        // another static buffer for internal using
+char g_String    [LOG_BUF_SIZE]{ '\0' };         // global buffer for characters
+char s_StrTmpBuf [LOG_BUF_SIZE]{ '\0' };         // static buffer for internal using
+char s_StrTmpBuf2[LOG_BUF_SIZE]{ '\0' };         // another static buffer for internal using
 
-static FILE*      s_pLogFile = nullptr;     // a static descriptor of the log file
-static LogStorage s_LogStorage;
+static FILE*              s_pLogFile = nullptr;  // a static descriptor of the log file
+static LogMsgsCharsBuffer s_LogMsgsCharsBuf;     // a static buffer for log messages chars (is used to prevent dynamic allocations)
+static LogStorage         s_LogStorage;
 
 // helpers prototypes
 void GetPathFromProjRoot(const char* fullPath, char* outPath);
@@ -30,37 +31,50 @@ void GetPathFromProjRoot(const char* fullPath, char* outPath);
 //---------------------------------------------------------
 void SetConsoleColor(const char* keyColor)
 {
+    assert(keyColor);
     printf("%s", keyColor);
 }
 
 //---------------------------------------------------------
 // Desc:   add a new message into the log storage (simply log history);
-//         this storage is used for printing log messages into
-//         the editors GUI
+//         this storage is used for printing log messages into the editor's GUI
 // Args:   - msg:  a string with text message
 //         - type: what kind of log we want to add
 //---------------------------------------------------------
 void AddMsgIntoLogStorage(const char* msg, const eLogType type)
 {
-    int& numLogs    = s_LogStorage.numLogs;
+    assert(msg);
 
-    // if we exceeded the limit of the log storage
-    if (numLogs == LOG_STORAGE_SIZE)
+    int& numLogs                 = s_LogStorage.numLogs;
+    LogMsgsCharsBuffer& charsBuf = s_LogMsgsCharsBuf;
+
+    if (numLogs >= LOG_STORAGE_SIZE)
+    {
+        printf("%s can't put a new log msg into the log storage: storage overflow (its limit: %d logs)%s\n", RED, (int)LOG_STORAGE_SIZE, RESET);
         return;
+    }
 
-    LogMessage& log = s_LogStorage.logs[numLogs];
-    char** buf      = &log.msg;                          // get a buffer to the text of this log
-    log.type        = type;                                // store the type of this log
+    LogMessage& newLog  = s_LogStorage.logs[numLogs];
+    newLog.size         = (int)strlen(msg) + 1;          // +1 because of null-terminator
+    bool canWriteNewLog = (charsBuf.currSize + newLog.size >= charsBuf.maxSize);
+
+    if (canWriteNewLog)
+    {
+        printf("%s can't put a new log msg into the log storage: if we do there will be a buffer overflow%s\n", RED, RESET);
+        return;
+    }
+
+    newLog.startIdx    = charsBuf.currSize;
+    newLog.type        = type; 
     
-    *buf = new char[strlen(msg) + 1]{ '\0' };
-    strcpy(*buf, msg);
-    
+    strcpy(charsBuf.buf + newLog.startIdx, msg);
+
+    charsBuf.currSize += newLog.size;
     ++numLogs;
 }
 
 //---------------------------------------------------------
-// Desc:   a helper for printing messages into the console
-//         and into the logger file
+// Desc:   a helper for printing messages into the console and into the logger file
 // Args:   - fileName:  path to the caller file
 //         - funcName:  name of the caller function/method
 //         - type:      a type of the log message
@@ -74,6 +88,10 @@ void PrintHelper(
     const int codeLine,
     const eLogType type)
 {
+    assert(fileName);
+    assert(funcName);
+    assert(text);
+
     const char* fmt = "[%05ld] %s %s: %s() (line: %d): %s\n";
     const time_t t = clock();
 
@@ -101,10 +119,10 @@ void PrintHelper(
 // Args:   - msg:  text content of the log message
 //         - type: a type of this log message
 //---------------------------------------------------------
-void PrintHelper(
-    const char* msg,
-    const eLogType type)
+void PrintHelper(const char* msg, const eLogType type)
 {
+    assert(msg);
+
     printf("%s\n", msg);
     AddMsgIntoLogStorage(msg, type);
 
@@ -126,35 +144,41 @@ int InitLogger(const char* filename)
     }
 
 #if _WIN32
+    // to make possible console color chanding
     HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD mode = 0;
     GetConsoleMode(hConsole, &mode);
     SetConsoleMode(hConsole, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
 #endif
 
-    if ((s_pLogFile = fopen(filename, "w")) != nullptr)
-    {
-        printf("the log file is created!\n");
-
-        time_t rawTime;
-        struct tm* info = NULL;
-        char buffer[80];
-
-        memset(buffer, 0, 80);
-        time(&rawTime);
-        info = localtime(&rawTime);
-        strftime(buffer, 80, "%x - %I:%M%p", info);
-
-        fprintf(s_pLogFile, "%s| the log file is create!\n", buffer);
-        fprintf(s_pLogFile, "-------------------------\n\n");
-
-        return 1;   // true
-    }
-    else
+    if ((s_pLogFile = fopen(filename, "w")) == NULL)
     {
         printf("%sInitLogger(): can't initialize the logger %s\n", RED, RESET);
         return 0;   // false
     }
+
+    // alloc memory for a log messages chars buffer
+    s_LogMsgsCharsBuf.buf = new char[s_LogMsgsCharsBuf.maxSize]{ '\0' };
+
+    // generate and store a message about successful initialization
+    time_t rawTime;
+    struct tm* info = NULL;
+    char buffer[80];
+
+    memset(buffer, 0, 80);
+    time(&rawTime);
+    info = localtime(&rawTime);
+    strftime(buffer, 80, "%x - %I:%M%p", info);
+
+    printf("%s| the log file is created!\n", buffer);
+    printf("-------------------------\n\n");
+
+    fprintf(s_pLogFile, "%s| the log file is created!\n", buffer);
+    fprintf(s_pLogFile, "-------------------------\n\n");
+
+    AddMsgIntoLogStorage("The logger is successfully initialized!", LOG_TYPE_MESSAGE);
+
+    return 1;   // true
 }
 
 //---------------------------------------------------------
@@ -162,12 +186,11 @@ int InitLogger(const char* filename)
 //---------------------------------------------------------
 void CloseLogger()
 {
-    // print message about closing of the log file and close it
-
     time_t rawTime;
     struct tm* info = NULL;
     char buffer[80];
 
+    memset(buffer, 0, 80);
     time(&rawTime);
     info = localtime(&rawTime);
     strftime(buffer, 80, "%x -%I:%M%p", info);
@@ -175,22 +198,14 @@ void CloseLogger()
     fprintf(s_pLogFile, "\n--------------------------------\n");
     fprintf(s_pLogFile, "%s| this is the end, my only friend, the end\n", buffer);
 
-    // release the memory from logs in the log storage
-    for (int i = 0; i < s_LogStorage.numLogs; ++i)
+    // release the memory from log messages chars buffer
+    if (s_LogMsgsCharsBuf.buf)
     {
-        delete[] s_LogStorage.logs[i].msg;
-        s_LogStorage.logs[i].msg = nullptr;
+        delete[] s_LogMsgsCharsBuf.buf;
+        s_LogMsgsCharsBuf.buf = nullptr;
     }
 
     fclose(s_pLogFile);
-}
-
-//---------------------------------------------------------
-// Desc:   get a ptr (file descriptor) to the opened log file
-//---------------------------------------------------------
-FILE* GetLogFile()
-{
-    return s_pLogFile;
 }
 
 //---------------------------------------------------------
@@ -199,6 +214,32 @@ FILE* GetLogFile()
 const LogStorage* GetLogStorage()
 {
     return &s_LogStorage;
+}
+
+//---------------------------------------------------------
+// Desc:   return the current number of all the log messages
+//---------------------------------------------------------
+int GetNumLogMsgs()
+{
+    return s_LogStorage.numLogs;
+}
+
+//---------------------------------------------------------
+// Desc:   return a ptr to the beginning of the log message by index 
+//---------------------------------------------------------
+const char* GetLogTextByIdx(const int idx)
+{
+    assert(idx < s_LogStorage.numLogs);
+    return s_LogMsgsCharsBuf.buf + s_LogStorage.logs[idx].startIdx;
+}
+
+//---------------------------------------------------------
+// Desc:   return a type of the log message by index
+//---------------------------------------------------------
+eLogType GetLogTypeByIdx(const int idx)
+{
+    assert(idx < s_LogStorage.numLogs);
+    return s_LogStorage.logs[idx].type;
 }
 
 //---------------------------------------------------------
@@ -215,14 +256,12 @@ void LogMsg(const char* format, ...)
     va_list args;
     va_start(args, format);
 
-    // reset the buffer
     memset(s_StrTmpBuf, 0, LOG_BUF_SIZE);
 
-    // make a string with input log-message
-    vsnprintf(s_StrTmpBuf, LOG_BUF_SIZE- 1, format, args);
-
-    // create a final string and print it
+    // generate a full log message
+    vsnprintf(s_StrTmpBuf, LOG_BUF_SIZE-1, format, args);
     snprintf(s_StrTmpBuf2, LOG_BUF_SIZE-1, fmt, t, s_StrTmpBuf);
+
     PrintHelper(s_StrTmpBuf2, LOG_TYPE_FORMATTED);
 
     va_end(args);
@@ -246,7 +285,6 @@ void LogMsg(
     va_list args;
     va_start(args, format);
 
-    // reset the buffer
     memset(s_StrTmpBuf, 0, LOG_BUF_SIZE);
 
     // make a string with input log-message
@@ -256,7 +294,6 @@ void LogMsg(
     char* fileName = s_StrTmpBuf2;
     GetPathFromProjRoot(fullFilePath, fileName);
 
-    // print a message into the console and log file
     SetConsoleColor(GREEN);
     PrintHelper(fileName, funcName, s_StrTmpBuf, codeLine, LOG_TYPE_MESSAGE);
     SetConsoleColor(RESET);
@@ -282,7 +319,6 @@ void LogDbg(
     va_list args;
     va_start(args, format);
 
-    // reset the buffer
     memset(s_StrTmpBuf, 0, LOG_BUF_SIZE);
 
     // make a string with input log-message
@@ -292,7 +328,6 @@ void LogDbg(
     char* fileName = s_StrTmpBuf2;
     GetPathFromProjRoot(fullFilePath, fileName);
 
-    // print a message into the console and log file
     SetConsoleColor(RESET);
     PrintHelper(fileName, funcName, s_StrTmpBuf, codeLine, LOG_TYPE_DEBUG);
 
@@ -317,16 +352,17 @@ void LogErr(
     va_list args;
     va_start(args, format);
 
-    // reset the buffers
     memset(s_StrTmpBuf,  0, LOG_BUF_SIZE);
     memset(s_StrTmpBuf2, 0, LOG_BUF_SIZE);
+
 
     // make a string with input log-message
     vsnprintf(s_StrTmpBuf, LOG_BUF_SIZE - 1, format, args);
 
     // get a relative path to the caller's file
-    char fileName[128]{'\0'};
-    GetPathFromProjRoot(fullFilePath, fileName);
+    char relativeFilePath[128]{'\0'};
+    GetPathFromProjRoot(fullFilePath, relativeFilePath);
+
 
     const time_t time = clock();
     const char*  fmt =
@@ -341,9 +377,9 @@ void LogErr(
         LOG_BUF_SIZE-1,
         fmt,
         time,
-        fileName,                               // relative path to the caller file
-        funcName,                               // a function name where we called this log-function
-        codeLine,                               // at what line
+        relativeFilePath,
+        funcName,                               
+        codeLine,                               
         s_StrTmpBuf);
 
     // print a message into the console and log file
@@ -357,10 +393,12 @@ void LogErr(
 // =================================================================================
 // Private Helpers
 // =================================================================================
+
+//---------------------------------------------------------
+// Desc:   return relative path from the project root
+//---------------------------------------------------------
 void GetPathFromProjRoot(const char* fullPath, char* outPath)
 {
-    // return relative path from the project root
-
     if ((!fullPath) || (fullPath[0] == '\0'))
     {
         printf("%s Logger ERROR (%s): input path is empty!%s\n", RED, __func__, RESET);
@@ -372,6 +410,7 @@ void GetPathFromProjRoot(const char* fullPath, char* outPath)
         printf("%s Logger ERROR (%s): in-out path == nullptr%s\n", RED, __func__, RESET);
         return;
     }
+
 
     const char* found = strstr(fullPath, "DoorsEngine\\");
 

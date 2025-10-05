@@ -150,6 +150,7 @@
     <ClInclude Include="geometry\plane_3d_functions.h" />
     <ClInclude Include="geometry\rect_3d.h" />
     <ClInclude Include="geometry\rect_3d_functions.h" />
+    <ClInclude Include="tests\tests_frustum.h" />
     <ClInclude Include="tests\tests_rect_3d.h" />
     <ClInclude Include="geometry\sphere.h" />
     <ClInclude Include="geometry\sphere_functions.h" />

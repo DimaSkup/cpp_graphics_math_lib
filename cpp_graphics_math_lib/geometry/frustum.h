@@ -38,7 +38,7 @@ class Frustum
 public:
     enum ePlaneClassifications
     {
-        PLANE_FROMNT = 0,
+        PLANE_FRONT = 0,
         PLANE_BACK,
         PLANE_INTERSECT
     };
@@ -70,13 +70,9 @@ public:
     // creators
     //-----------------------------------------------------
     Frustum();
-
-    Frustum(
-        const float fov,
-        const float aspectRatio,
-        const float nearZ,
-        const float farZ);
-
+    Frustum(const float fov, const float aspectRatio, const float zn, const float zf);
+    Frustum(const Plane3d& l, const Plane3d& r, const Plane3d& t, const Plane3d& b, const Plane3d& n, const Plane3d& f);
+    Frustum(const Matrix& proj);
     ~Frustum();
 
     //-----------------------------------------------------
@@ -89,6 +85,10 @@ public:
         const float farZ);
 
     void CreateFromProjMatrix(const Matrix& proj, const bool normalizePlanes = false);
+
+    void Transform(Frustum& outFrustum, const Matrix& mat) const;
+
+    void Copy(Frustum& dstFrustum) const;
 
     //-----------------------------------------------------
     // test operations
@@ -110,6 +110,38 @@ inline Frustum::Frustum()
 {
 }
 
+//---------------------------------------------------------
+
+Frustum::Frustum(
+    const float fov,
+    const float aspectRatio, 
+    const float zn, 
+    const float zf)
+{
+    Init(fov, aspectRatio, zn, zf);
+}
+
+//---------------------------------------------------------
+
+inline Frustum::Frustum(
+    const Plane3d& left, 
+    const Plane3d& right, 
+    const Plane3d& top, 
+    const Plane3d& bottom, 
+    const Plane3d& near, 
+    const Plane3d& far) 
+    :
+    leftPlane(left),
+    rightPlane(right),
+    topPlane(top),
+    bottomPlane(bottom),
+    nearPlane(near),
+    farPlane(far)
+{
+}
+
+//---------------------------------------------------------
+
 inline Frustum::~Frustum()
 {
 }
@@ -117,19 +149,9 @@ inline Frustum::~Frustum()
 //---------------------------------------------------------
 // Desc:   create view frustum plane vectors in camera space in
 //         terms of the focal length, aspect ratio, near and far plane distance
-//
-//          x-z plane                      y-z plane
-//     (e is a focal length)         (e is a focal length)
-// 
-//        1           1
-//  *-----------*-----------*          
-//    \         |         /         
-//      \     e |       /            
-//        \     |     /          
-//          \   |   /
-//            \ | /
-//              *
-// 
+// Args:   - fov:          field of view in radians
+//         - aspectRatio:  screen width divided by height
+//         - nearZ, farZ:  a distance to near and far planes by Z-axis
 //---------------------------------------------------------
 inline void Frustum::Init(
     const float fov,
@@ -137,48 +159,90 @@ inline void Frustum::Init(
     const float nearZ,
     const float farZ)
 {
-    // compute focal length
-    const float e = 1.0f / tanf(fov / 2);
+    assert(fov > 0.0f);
+    assert(aspectRatio > 0.0f);
+    assert(nearZ > 0.0f && farZ > 0.0f);
+    assert(nearZ < farZ);
 
-    float denominator1 = sqrtf(SQR(e) + 1);
-    float denominator2 = sqrtf(SQR(e) + SQR(aspectRatio));
+    // compute focal length
+    const float e   = 1.0f / tanf(fov * 0.5f);
+
+    float invDenom1 = 1.0f / sqrtf(SQR(e) + 1);
+    float invDenom2 = 1.0f / sqrtf(SQR(e) + SQR(1.0f/aspectRatio));
 
     // normalized normal vectors
-    float horizNx = e / denominator1;
-    float horizNz = 1 / denominator1;
-    float vertNy = e / denominator2;
-    float vertNz = aspectRatio / denominator2;
+    float horizNx = e * invDenom1;
+    float horizNz = invDenom1;
+    float vertNy  = e * invDenom2;
+    float vertNz  = invDenom2 * aspectRatio;
 
 
-    nearPlane   = Plane3d(0.0f, 0.0f, +1.0f, nearZ);
-    farPlane    = { 0,0,-1,farZ };
+    nearPlane   = Plane3d(0, 0, +1, -nearZ);
+    farPlane    = Plane3d(0, 0, -1, farZ);
 
-    rightPlane  = { -horizNx, 0, horizNz, 0 };
-    leftPlane   = { +horizNx, 0, horizNz, 0 };
+    // since we have Z-forward the nz component for r/l/t/b planes is POSITIVE
+    rightPlane  = Plane3d(-horizNx, 0, horizNz, 0);
+    leftPlane   = Plane3d(+horizNx, 0, horizNz, 0);
 
-    topPlane    = { 0, -vertNy, vertNz, 0 };
-    bottomPlane = { 0, vertNy, vertNz, 0 };
+    topPlane    = Plane3d(0, -vertNy, vertNz, 0);
+    bottomPlane = Plane3d(0, +vertNy, vertNz, 0);
 }
 
-#if 0
+
 //---------------------------------------------------------
 // Desc:   setup the fructum clipping planes using input proj matrix
 //---------------------------------------------------------
-Frustum::Frustum(const Matrix& m)
+inline Frustum::Frustum(const Matrix& m)
 {
+
+    Matrix mt;
+    MatrixTranspose(m, mt);
+
+#if 0
     const Vec4 row1(m[0][0], m[0][1], m[0][2], m[0][3]);
     const Vec4 row2(m[1][0], m[1][1], m[1][2], m[1][3]);
     const Vec4 row3(m[2][0], m[2][1], m[2][2], m[2][3]);
     const Vec4 row4(m[3][0], m[3][1], m[3][2], m[3][3]);
-
-    nearClipPlane_ = { row3 + row4 };
-    farClipPlane_ = { row3 - row4 };
-    rightClipPlane_ = { row1 - row4 };
-    leftClipPlane_ = { row1 + row4 };
-    topClipPlane_ = { row2 - row4 };
-    bottomClipPlane_ = { row2 + row4 };
-}
+#elif 1
+    const Vec4 row1(mt[0][0], mt[0][1], mt[0][2], mt[0][3]);
+    const Vec4 row2(mt[1][0], mt[1][1], mt[1][2], mt[1][3]);
+    const Vec4 row3(mt[2][0], mt[2][1], mt[2][2], mt[2][3]);
+    const Vec4 row4(mt[3][0], mt[3][1], mt[3][2], mt[3][3]);
+#else
+    const Vec4 row1(m[0][0], m[1][0], m[2][0], m[3][0]);
+    const Vec4 row2(m[0][1], m[1][1], m[2][1], m[3][1]);
+    const Vec4 row3(m[0][2], m[1][2], m[2][2], m[3][2]);
+    const Vec4 row4(m[0][3], m[1][3], m[2][3], m[3][3]);
 #endif
+
+#if 1
+    nearPlane   = { row3 + row4 };
+    farPlane    = { row3 - row4 };
+    rightPlane  = { row1 - row4 };
+    leftPlane   = { row1 + row4 };
+    topPlane    = { row2 - row4 };
+    bottomPlane = { row2 + row4 };
+#else
+
+    nearPlane   = row4 + row3;
+    farPlane    = row4 - row3;
+
+    leftPlane   = row4 + row1;
+    rightPlane  = row4 - row1;
+
+    bottomPlane = row4 + row2;
+    topPlane    = row4 - row2;
+#endif
+    
+
+    nearPlane.Normalize();
+    farPlane.Normalize();
+    rightPlane.Normalize();
+    leftPlane.Normalize();
+    topPlane.Normalize();
+    bottomPlane.Normalize();
+}
+
 
 //---------------------------------------------------------
 // Desc:   extract frustum planes from input projection matrix
@@ -187,7 +251,7 @@ inline void Frustum::CreateFromProjMatrix(
     const Matrix& proj,
     const bool normalizePlanes)
 {
-    const Matrix matrix(proj);
+    const Matrix& matrix = proj;
 
     // Left clipping plane
     leftPlane.normal.x = matrix.m03 + matrix.m00;
@@ -239,6 +303,28 @@ inline void Frustum::CreateFromProjMatrix(
     }
 }
 
+//---------------------------------------------------------
+// Desc:   transform the current frustum with input matrix and 
+//         store the result into outFrustum
+//---------------------------------------------------------
+inline void Frustum::Transform(Frustum& outFrustum, const Matrix& mat) const
+{
+    // compute an inverse transpose matrix for proper
+    // transformation of the plane's normal vector
+    Matrix invMT;
+    MatrixInverse(invMT, nullptr, mat);
+    MatrixTranspose(invMT);
+
+    outFrustum = *this;
+
+    outFrustum.leftPlane.Transform(invMT);
+    outFrustum.rightPlane.Transform(invMT);
+    outFrustum.topPlane.Transform(invMT);
+    outFrustum.bottomPlane.Transform(invMT);
+    outFrustum.nearPlane.Transform(invMT);
+    outFrustum.farPlane.Transform(invMT);
+}
+
 //==================================================================================
 // TESTS
 //==================================================================================
@@ -271,12 +357,32 @@ inline bool Frustum::TestRect(const Rect3d& rect) const
 //---------------------------------------------------------
 inline bool Frustum::TestSphere(const Sphere& sphere) const
 {
+#if 0
     return  (PlaneClassify(sphere, leftPlane)   != PLANE_BACK) ||
             (PlaneClassify(sphere, rightPlane)  != PLANE_BACK) ||
             (PlaneClassify(sphere, topPlane)    != PLANE_BACK) ||
             (PlaneClassify(sphere, bottomPlane) != PLANE_BACK) ||
             (PlaneClassify(sphere, nearPlane)   != PLANE_BACK) ||
             (PlaneClassify(sphere, farPlane)    != PLANE_BACK);
+#elif 1
+    return
+        leftPlane.SignedDistance(sphere.center)     >= -sphere.radius &&
+        rightPlane.SignedDistance(sphere.center)    >= -sphere.radius &&
+        topPlane.SignedDistance(sphere.center)      >= -sphere.radius &&
+        bottomPlane.SignedDistance(sphere.center)   >= -sphere.radius &&
+        nearPlane.SignedDistance(sphere.center)     >= -sphere.radius &&
+        farPlane.SignedDistance(sphere.center)      >= -sphere.radius;
+#else
+    // for debugging
+    bool l = leftPlane.SignedDistance(sphere.center) >= -sphere.radius;
+    bool r = rightPlane.SignedDistance(sphere.center) >= -sphere.radius;
+    bool t = topPlane.SignedDistance(sphere.center) >= -sphere.radius;
+    bool b = bottomPlane.SignedDistance(sphere.center) >= -sphere.radius;
+    bool n = nearPlane.SignedDistance(sphere.center) >= -sphere.radius;
+    bool f = farPlane.SignedDistance(sphere.center) >= -sphere.radius;
+
+    return l && r && t && b && n && f;
+#endif
 }
 
 #if 0

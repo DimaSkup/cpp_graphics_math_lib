@@ -86,5 +86,8 @@
     <ClInclude Include="tests\tests_plane_3d.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="tests\tests_frustum.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

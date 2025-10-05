@@ -26,7 +26,7 @@
 #pragma once
 
 #include <math/vec3.h>
-
+#include <math/vec4.h>
 
 class Plane3d
 {
@@ -39,8 +39,12 @@ public:
         float m[4]{0};
         struct
         {
-            float distance;
             Vec3  normal;
+            float distance;
+        };
+        struct
+        {
+            Vec4 plane;
         };
     };
 
@@ -51,6 +55,7 @@ public:
 
     Plane3d(const float nx, const float ny, const float nz, const float dist);
     Plane3d(const Plane3d& src);
+    Plane3d(const Vec4& normalAndDist);
     Plane3d(const Vec3& p0, const Vec3& p1, const Vec3& p2);
     Plane3d(const Vec3& normal, const float distance);
     Plane3d(const Vec3& point, const Vec3& normal);
@@ -71,7 +76,7 @@ public:
     void Set(const Vec3& point, const Vec3& normal);
 
     void Normalize();
-    void Transform(const Matrix& invTranspose);
+    void Transform(const Matrix& inverse);
 
     //-----------------------------------------------------
     // point operations

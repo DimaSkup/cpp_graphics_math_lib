@@ -211,6 +211,16 @@ inline void MatrixIdentity(Matrix& m)
 }
 
 //---------------------------------------------------------
+// Desc:   return an identity matrix
+//---------------------------------------------------------
+inline Matrix MatrixIdentity()
+{
+    Matrix m;
+    MatrixIdentity(m);
+    return m;
+}
+
+//---------------------------------------------------------
 // Desc:   copy values from src matrix into the dest matrix
 //---------------------------------------------------------
 inline void MatrixCopy(const Matrix& src, Matrix& dst)
@@ -257,20 +267,21 @@ inline float MatrixDeterminant(const Matrix& mat)
 // Desc:   compute the inverse of the input matrix mat and store the result in invMat
 // Ret:    0 if the matrix is invertible
 //---------------------------------------------------------
-inline int MatrixInverse(Matrix& invMat, float* det, const Matrix& mat)
+inline int MatrixInverse(Matrix& invMat, float* determinant, const Matrix& mat)
 {
-    assert(det != nullptr);
-
     // compute the determinant to see if there is an inverse
-    *det = MatrixDeterminant(mat);
+    float det = MatrixDeterminant(mat);
 
-    if (fabs(*det) < EPSILON_E5)
+    if (determinant != nullptr)
+        *determinant = det;
+
+    if (fabs(det) < EPSILON_E5)
     {
         return 0;
     }
 
     // compute inverse to save divides
-    const float detInv = 1.0f / (*det);
+    const float detInv = 1.0f / det;
 
     // compute inverse matrix == adjoint(m) / det(m)
     invMat.m00 =  detInv * (mat.m11*mat.m22 - mat.m12*mat.m21);
@@ -308,7 +319,6 @@ inline Matrix MatrixInverse(float* det, const Matrix& mat)
     return invMat;
 }
 
-
 //---------------------------------------------------------
 // Desc:   multiply two matrices together and return the result in outMat
 //---------------------------------------------------------
@@ -316,14 +326,25 @@ inline void MatrixMul(const Matrix& ma, const Matrix& mb, Matrix& outMat)
 {
     for (int i = 0; i < 4; i++)
     {
-        for (int j = 0; j < 4; j++)
-        {
-            outMat.m[i][j] =
-                ma.m[i][0] * mb.m[0][j] +
-                ma.m[i][1] * mb.m[1][j] +
-                ma.m[i][2] * mb.m[2][j] +
-                ma.m[i][3] * mb.m[3][j];
-        }
+        outMat.m[i][0] = ma.m[i][0] * mb.m[0][0] +
+                         ma.m[i][1] * mb.m[1][0] +
+                         ma.m[i][2] * mb.m[2][0] +
+                         ma.m[i][3] * mb.m[3][0];
+
+        outMat.m[i][1] = ma.m[i][0] * mb.m[0][1] +
+                         ma.m[i][1] * mb.m[1][1] +
+                         ma.m[i][2] * mb.m[2][1] +
+                         ma.m[i][3] * mb.m[3][1];
+
+        outMat.m[i][2] = ma.m[i][0] * mb.m[0][2] +
+                         ma.m[i][1] * mb.m[1][2] +
+                         ma.m[i][2] * mb.m[2][2] +
+                         ma.m[i][3] * mb.m[3][2];
+
+        outMat.m[i][3] = ma.m[i][0] * mb.m[0][3] +
+                         ma.m[i][1] * mb.m[1][3] +
+                         ma.m[i][2] * mb.m[2][3] +
+                         ma.m[i][3] * mb.m[3][3];
     }
 }
 
@@ -338,25 +359,20 @@ inline void MatrixMul(const Matrix& ma, const Matrix& mb, Matrix& outMat)
 //---------------------------------------------------------
 inline void MatrixMulVec3(const Vec3& vec, const Matrix& mat, Vec3& outVec)
 {
-    Vec3 tmpVec(0,0,0);
+    Vec3 tmp(0,0,0);
 
+    // multiply vec by matrix
     for (int col = 0; col < 3; col++)
     {
-        int row = 0; // we use this index later when compute the last element in column;
-
-        tmpVec.xyz[col] = 0.0f;
-
-        for (row = 0; row < 3; row++)
-        {
-            // add in next product pair
-            tmpVec.xyz[col] += (vec.xyz[row] * mat.m[row][col]);
-        }
+        tmp.xyz[col] += (vec.xyz[0] * mat.m[0][col]);
+        tmp.xyz[col] += (vec.xyz[1] * mat.m[1][col]);
+        tmp.xyz[col] += (vec.xyz[2] * mat.m[2][col]);
 
         // add in last element in column or w*pM[3][col]
-        tmpVec.xyz[col] += mat.m[row][col];
+        tmp.xyz[col] += mat.m[3][col];
     }
 
-    outVec = tmpVec;
+    outVec = tmp;
 }
 
 //---------------------------------------------------------
@@ -364,16 +380,26 @@ inline void MatrixMulVec3(const Vec3& vec, const Matrix& mat, Vec3& outVec)
 //---------------------------------------------------------
 inline void MatrixMulVec4(const Vec4& vec, const Matrix& mat, Vec4& outVec)
 {
+    // multiply vec by matrix
     for (int col = 0; col < 4; col++)
     {
         outVec.xyzw[col] = 0.0f;
-
-        for (int row = 0; row < 4; row++)
-        {
-            // add in next product pair
-            outVec.xyzw[col] += (vec.xyzw[row] * mat.m[row][col]);
-        }
+        outVec.xyzw[col] += (vec.xyzw[0] * mat.m[0][col]);
+        outVec.xyzw[col] += (vec.xyzw[1] * mat.m[1][col]);
+        outVec.xyzw[col] += (vec.xyzw[2] * mat.m[2][col]);
+        outVec.xyzw[col] += (vec.xyzw[3] * mat.m[3][col]);
     }
+}
+
+//---------------------------------------------------------
+// Desc:   return a scaling matrix
+//---------------------------------------------------------
+inline Matrix MatrixScaling(const float sx, const float sy, const float sz)
+{
+    return Matrix{ sx,  0,   0,   0,
+                   0,   sy,  0,   0,
+                   0,   0,   sz,  0,
+                   0,   0,   0,   1 };
 }
 
 //---------------------------------------------------------
@@ -486,6 +512,70 @@ inline Matrix MatrixRotationAxis(Vec3 axis, const float angle)
     };
 }
 
+//---------------------------------------------------------
+// Desc:   computer and return a projection matrix for left-handed system
+// Args:   - fov:         field of view in radians
+//         - aspectRatio: sc
+//---------------------------------------------------------
+inline Matrix MatrixProjectionLH(
+    const float fov, 
+    const float aspectRatio,
+    const float nearZ,
+    const float farZ)
+{
+    assert(fov > 0.0f);
+    assert(aspectRatio > 0.0f);
+    assert(nearZ > 0.0f && farZ > 0.0f);
+    assert(nearZ < farZ);
+
+    // | (h/w)*1/tan(fov/2)               0                  0      0 |
+    // |                  0   1/tanf(fov/2)                  0      0 |
+    // |                  0               0         zf/(zf-zn)      1 | 
+    // |                  0               0   (-zf*zn)/(zf-zn)      0 |
+    Matrix M;
+    memset(M.m, 0, sizeof(Matrix));
+
+#if 0
+    // compute focal length
+    const float e = 1.0f / tanf(fov * 0.5f);
+
+    m.m00 = aspectRatio * e;
+    m.m11 = e;
+    m.m22 = farZ / (farZ - nearZ);
+    m.m23 = 1.0f;
+    m.m32 = (-farZ * nearZ) / (farZ - nearZ);
+#else
+    // compute focal length
+    const float e = 1.0f / tanf(fov * 0.5f);
+
+    float Height = e;
+    float Width = Height / aspectRatio;
+    float fRange = farZ / (farZ - nearZ);
+
+    M.m[0][0] = Width;
+    M.m[0][1] = 0.0f;
+    M.m[0][2] = 0.0f;
+    M.m[0][3] = 0.0f;
+
+    M.m[1][0] = 0.0f;
+    M.m[1][1] = Height;
+    M.m[1][2] = 0.0f;
+    M.m[1][3] = 0.0f;
+
+    M.m[2][0] = 0.0f;
+    M.m[2][1] = 0.0f;
+    M.m[2][2] = fRange;
+    M.m[2][3] = 1.0f;
+
+    M.m[3][0] = 0.0f;
+    M.m[3][1] = 0.0f;
+    M.m[3][2] = -fRange * nearZ;
+    M.m[3][3] = 0.0f;
+#endif
+
+
+    return M;
+}
 
 //==================================================================================
 // operators
@@ -497,17 +587,10 @@ inline Matrix MatrixRotationAxis(Vec3 axis, const float angle)
 //---------------------------------------------------------
 inline Matrix& Matrix::operator *= (const Matrix& mat)
 {
-    for (int i = 0; i < 4; ++i)
-    {
-        for (int j = 0; j < 4; ++j)
-        {
-            m[i][j] =
-                m[i][0] * mat.m[0][j] +
-                m[i][1] * mat.m[1][j] +
-                m[i][2] * mat.m[2][j] +
-                m[i][3] * mat.m[3][j];
-        }
-    }
+    Matrix tmp;
+    
+    MatrixMul(*this, mat, tmp);
+    MatrixCopy(tmp, *this);
 
     return *this;
 }
